@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:async';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 void main() {
   runApp(const MyApp());
@@ -7,116 +11,280 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF1E2A45),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blueAccent,
+          brightness: Brightness.dark,
+        ),
+        sliderTheme: const SliderThemeData(
+          thumbColor: Colors.blueAccent,
+          activeTrackColor: Colors.lightBlue,
+          inactiveTrackColor: Colors.white30,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blueAccent,
+            foregroundColor: Colors.white,
+            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          ),
+        ),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const StrategyForm(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class StrategyForm extends StatefulWidget {
+  const StrategyForm({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<StrategyForm> createState() => _StrategyFormState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _StrategyFormState extends State<StrategyForm> {
+  double lossCut = -4.0;
+  double takeProfit = 1.5;
+  int timeoutMinutes = 5;
+  int durationMinutes = 60;
+  double investRatio = 30.0;
+  List<String> selectedCoins = [];
+  List<String> availableCoins = [];
+  String resultLog = "";
 
-  void _incrementCounter() {
+  bool isRunning = false;
+  DateTime? startTime;
+  Duration? elapsedTime;
+  Duration? totalDuration;
+  Duration? remainingTime;
+  StreamSubscription? logSubscription;
+  Timer? timer;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchTopCoins();
+  }
+
+  Future<void> fetchTopCoins() async {
+    try {
+      final url = Uri.parse("http://127.0.0.1:8000/top-coins");
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          availableCoins = List<String>.from(data['top_coins']);
+        });
+      }
+    } catch (e) {
+      print("❌ HTTP 요청 에러: $e");
+    }
+  }
+
+  void startStrategy() {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      isRunning = true;
+      resultLog = "전략 실행 중...";
+      startTime = DateTime.now();
+      totalDuration = Duration(minutes: durationMinutes);
+      elapsedTime = Duration.zero;
+      remainingTime = totalDuration;
     });
+
+    timer = Timer.periodic(Duration(seconds: 1), (_) {
+      setState(() {
+        elapsedTime = DateTime.now().difference(startTime!);
+        remainingTime = totalDuration! - elapsedTime!;
+        if (remainingTime!.inSeconds <= 0) {
+          isRunning = false;
+          resultLog += "\n✅ 전략 자동 종료됨";
+          timer?.cancel();
+          logSubscription?.cancel();
+        }
+      });
+    });
+
+    final channel = WebSocketChannel.connect(
+      Uri.parse('ws://127.0.0.1:8000/ws/logs'),
+    );
+    logSubscription = channel.stream.listen((message) {
+      setState(() {
+        resultLog += '\n$message';
+      });
+    });
+
+    sendStrategy();
+  }
+
+  void stopStrategy() {
+    setState(() {
+      isRunning = false;
+      resultLog += "\n⛔ 전략 수동 종료됨";
+    });
+    logSubscription?.cancel();
+    logSubscription = null;
+    timer?.cancel();
+    timer = null;
+  }
+
+  Future<void> sendStrategy() async {
+    final url = Uri.parse("http://127.0.0.1:8000/start-strategy");
+    final body = {
+      "loss_cut": lossCut,
+      "take_profit": takeProfit,
+      "timeout_minutes": timeoutMinutes,
+      "duration_minutes": durationMinutes,
+      "invest_ratio": investRatio,
+      "candidates": selectedCoins,
+    };
+
+    try {
+      await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(body),
+      );
+    } catch (e) {
+      setState(() {
+        resultLog += "\n❌ 전략 요청 실패: $e";
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        backgroundColor: Colors.black,
+        title: const Text("비트코인 자동매매 설정"),
       ),
       body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+        child: Card(
+          elevation: 8,
+          margin: const EdgeInsets.all(20),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          color: const Color(0xFF2C3E5A),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  buildSlider("손절률 (%)", lossCut, -10.0, 0.0, (val) => setState(() => lossCut = val)),
+                  buildSlider("익절률 (%)", takeProfit, 0.0, 5.0, (val) => setState(() => takeProfit = val)),
+                  buildIntSlider("감시 시간 (분)", timeoutMinutes, 1, 30, (val) => setState(() => timeoutMinutes = val)),
+                  buildIntSlider("실행 시간 (분)", durationMinutes, 10, 240, (val) => setState(() => durationMinutes = val)),
+                  buildSlider("투자 비율 (%)", investRatio, 1.0, 100.0, (val) => setState(() => investRatio = val)),
+                  const SizedBox(height: 20),
+                  const Text("코인 리스트 (최대 20개 중 다중 선택)", style: TextStyle(fontWeight: FontWeight.bold)),
+                  availableCoins.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Text("코인 데이터를 불러오는 중입니다...", style: TextStyle(color: Colors.white)),
+                        )
+                      : Wrap(
+                          spacing: 6,
+                          children: availableCoins.map((coin) => FilterChip(
+                            label: Text(coin),
+                            selected: selectedCoins.contains(coin),
+                            onSelected: (bool selected) {
+                              setState(() {
+                                if (selected) {
+                                  selectedCoins.add(coin);
+                                } else {
+                                  selectedCoins.remove(coin);
+                                }
+                              });
+                            },
+                          )).toList(),
+                        ),
+                  const SizedBox(height: 24),
+                  if (!isRunning)
+                    Center(
+                      child: ElevatedButton(
+                        onPressed: startStrategy,
+                        child: const Text("전략 실행"),
+                      ),
+                    )
+                  else
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ElevatedButton(
+                          onPressed: stopStrategy,
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                          child: const Text("멈추기"),
+                        ),
+                        const SizedBox(width: 20),
+                        Text("⏱️ 경과: ${elapsedTime?.inMinutes ?? 0}분 ${elapsedTime?.inSeconds.remainder(60) ?? 0}초"),
+                        const SizedBox(width: 20),
+                        Text("⏳ 남은: ${remainingTime?.inMinutes ?? 0}분 ${remainingTime?.inSeconds.remainder(60) ?? 0}초"),
+                      ],
+                    ),
+                  const SizedBox(height: 24),
+                  const Text("결과 로그:", style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.black38,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: SelectableText(resultLog),
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+
+  Widget buildSlider(String label, double value, double min, double max, Function(double) onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("$label: ${value.toStringAsFixed(2)}"),
+        SizedBox(
+          width: 300,
+          child: Slider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: 100,
+            label: value.toStringAsFixed(2),
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildIntSlider(String label, int value, int min, int max, Function(int) onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("$label: $value"),
+        SizedBox(
+          width: 300,
+          child: Slider(
+            value: value.toDouble(),
+            min: min.toDouble(),
+            max: max.toDouble(),
+            divisions: max - min,
+            label: value.toString(),
+            onChanged: (double newVal) => onChanged(newVal.round()),
+          ),
+        ),
+      ],
     );
   }
 }

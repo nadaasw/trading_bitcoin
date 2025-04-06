@@ -28,5 +28,17 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- ✨ 추가된 부분 -->
+  	<key>NSAppTransportSecurity</key>
+  	<dict>
+   		<key>NSAllowsArbitraryLoads</key>
+    	<true/>
+  	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>이 앱은 로컬 네트워크 상의 FastAPI 서버와 통신합니다.</string>
 </dict>
 </plist>
