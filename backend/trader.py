@@ -24,7 +24,7 @@ async def run_strategy_logic(req: StrategyRequest):
     end_time = datetime.now() + timedelta(minutes=req.duration_minutes)
     while datetime.now() < end_time:
         # top = get_top_rising_coin(req.candidates, min_movement=-1.5)
-        top = get_candidate_by_yangbong_strategy(req.candidates)
+        top = await get_candidate_by_yangbong_strategy(req.candidates)
         if not top:
             await send_log("[패스] 조건을 만족하는 종목이 없음 (1.5% 이상 변동 없음)")
             await asyncio.sleep(60)
@@ -127,13 +127,13 @@ def get_top_rising_coin(markets: list[str], min_movement: float = -3.5):
     result.sort(key=lambda x: x["rate"], reverse=True)
     return result[0] if result else None
 
-def get_candidate_by_yangbong_strategy(markets: list[str]) -> dict | None:
+async def get_candidate_by_yangbong_strategy(markets: list[str]) -> dict | None:
     count = 0
     for market in markets:
         df = pyupbit.get_ohlcv(market, interval="minute3", count=10)
         time.sleep(1)
         if df is None or len(df) < 10:
-            send_log("정보가 부족합니다.")
+            await send_log("정보가 부족합니다.")
             continue
         count += 1
         recent = df.iloc[-4:-1]
@@ -142,7 +142,7 @@ def get_candidate_by_yangbong_strategy(markets: list[str]) -> dict | None:
 
         max_change = max((row["close"] - row["open"]) / row["open"] * 100 for _, row in recent.iterrows())
         if max_change >= 2.5:
-            send_log("변동폭이 큰 양봉이 있습니다.")
+            await send_log("변동폭이 큰 양봉이 있습니다.")
             continue
 
         df['ma5'] = df['close'].rolling(window=5).mean()
@@ -156,7 +156,7 @@ def get_candidate_by_yangbong_strategy(markets: list[str]) -> dict | None:
         if abs(ma5_prev - ma10_prev) < 1.5 and ma5_now > ma10_now and ma5_prev < ma10_prev:
             current_price = df.iloc[-1]["close"]
             return {"market": market, "price": current_price}
-    send_log(f"{count}개수 검사 중 ...")
+    await send_log(f"{count}개수 검사 중 ...")
     return None
 
 async def monitor_position(market: str, entry_price: float, req: StrategyRequest, entry_time: datetime, upbit):
