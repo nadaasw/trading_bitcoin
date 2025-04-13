@@ -132,14 +132,16 @@ def get_candidate_by_yangbong_strategy(markets: list[str]) -> dict | None:
         df = pyupbit.get_ohlcv(market, interval="minute3", count=10)
         time.sleep(1)
         if df is None or len(df) < 10:
+            send_log("정보가 부족합니다.")
             continue
 
-        recent = df.iloc[-6:-1]
+        recent = df.iloc[-5:-1]
         if not all(row["close"] > row["open"] for _, row in recent.iterrows()):
             continue
 
         max_change = max((row["close"] - row["open"]) / row["open"] * 100 for _, row in recent.iterrows())
-        if max_change >= 2.5:
+        if max_change >= 3.0:
+            send_log("변동폭이 큰 양봉이 있습니다.")
             continue
 
         df['ma5'] = df['close'].rolling(window=5).mean()
@@ -150,7 +152,7 @@ def get_candidate_by_yangbong_strategy(markets: list[str]) -> dict | None:
         ma5_prev = df['ma5'].iloc[-2]
         ma10_prev = df['ma10'].iloc[-2]
 
-        if abs(ma5_prev - ma10_prev) < 1.0 and ma5_now > ma10_now and ma5_prev < ma10_prev:
+        if abs(ma5_prev - ma10_prev) < 1.5 and ma5_now > ma10_now and ma5_prev < ma10_prev:
             current_price = df.iloc[-1]["close"]
             return {"market": market, "price": current_price}
 
