@@ -23,7 +23,8 @@ async def run_strategy_logic(req: StrategyRequest):
     last_market = None  # 직전 매수 종목
     end_time = datetime.now() + timedelta(minutes=req.duration_minutes)
     while datetime.now() < end_time:
-        top = get_top_rising_coin(req.candidates, min_movement=1.5)
+        # top = get_top_rising_coin(req.candidates, min_movement=-1.5)
+        top = get_candidate_by_yangbong_strategy(req.candidates)
         if not top:
             await send_log("[패스] 조건을 만족하는 종목이 없음 (1.5% 이상 변동 없음)")
             await asyncio.sleep(60)
@@ -31,12 +32,12 @@ async def run_strategy_logic(req: StrategyRequest):
 
         # 현재가가 당일 고가/저가와 같다면 패스
         df_day = pyupbit.get_ohlcv(top['market'], interval='day', count=1)
-
+        await send_log(f"[패스] {df_day}")
         if df_day is None or df_day.empty:
             await send_log(f"[스킵] {top['market']}의 일봉 데이터를 불러오지 못했거나 비어있습니다.")
             await asyncio.sleep(60)
-            continue
-
+            continue# 현재가가 당일 고가/저가와 같다면 패스
+        
         high = df_day['high'].iloc[-1]
         low = df_day['low'].iloc[-1]
         now_price = top['price']
@@ -58,7 +59,7 @@ async def run_strategy_logic(req: StrategyRequest):
             await asyncio.sleep(60)
             continue
 
-        await send_log(f"\n[매수 후보] {top['market']} | 변동률: {top['rate']:.2f}% | 현재가: {top['price']}")
+        await send_log(f"\n[매수 후보] {top['market']} | 현재가: {top['price']}")
 
         krw_balance = get_balance("KRW", upbit)
         if krw_balance < 5100:
@@ -125,6 +126,35 @@ def get_top_rising_coin(markets: list[str], min_movement: float = -3.5):
 
     result.sort(key=lambda x: x["rate"], reverse=True)
     return result[0] if result else None
+
+def get_candidate_by_yangbong_strategy(markets: list[str]) -> dict | None:
+    for market in markets:
+        df = pyupbit.get_ohlcv(market, interval="minute3", count=10)
+        time.sleep(1)
+        if df is None or len(df) < 10:
+            continue
+
+        recent = df.iloc[-6:-1]
+        if not all(row["close"] > row["open"] for _, row in recent.iterrows()):
+            continue
+
+        max_change = max((row["close"] - row["open"]) / row["open"] * 100 for _, row in recent.iterrows())
+        if max_change >= 2.5:
+            continue
+
+        df['ma5'] = df['close'].rolling(window=5).mean()
+        df['ma10'] = df['close'].rolling(window=10).mean()
+
+        ma5_now = df['ma5'].iloc[-1]
+        ma10_now = df['ma10'].iloc[-1]
+        ma5_prev = df['ma5'].iloc[-2]
+        ma10_prev = df['ma10'].iloc[-2]
+
+        if abs(ma5_prev - ma10_prev) < 1.0 and ma5_now > ma10_now and ma5_prev < ma10_prev:
+            current_price = df.iloc[-1]["close"]
+            return {"market": market, "price": current_price}
+
+    return None
 
 async def monitor_position(market: str, entry_price: float, req: StrategyRequest, entry_time: datetime, upbit):
     await send_log("[모니터링 시작] 익절/손절 조건 감시 중...")
