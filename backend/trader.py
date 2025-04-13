@@ -135,12 +135,12 @@ def get_candidate_by_yangbong_strategy(markets: list[str]) -> dict | None:
             send_log("정보가 부족합니다.")
             continue
 
-        recent = df.iloc[-5:-1]
+        recent = df.iloc[-4:-1]
         if not all(row["close"] > row["open"] for _, row in recent.iterrows()):
             continue
 
         max_change = max((row["close"] - row["open"]) / row["open"] * 100 for _, row in recent.iterrows())
-        if max_change >= 3.0:
+        if max_change >= 2.5:
             send_log("변동폭이 큰 양봉이 있습니다.")
             continue
 
