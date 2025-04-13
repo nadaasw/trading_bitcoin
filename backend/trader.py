@@ -129,6 +129,8 @@ def get_top_rising_coin(markets: list[str], min_movement: float = -3.5):
 
 async def get_candidate_by_yangbong_strategy(markets: list[str]) -> dict | None:
     count = 0
+    count_bong = 0
+    count_ma = 0
     for market in markets:
         df = pyupbit.get_ohlcv(market, interval="minute3", count=10)
         time.sleep(1)
@@ -138,6 +140,7 @@ async def get_candidate_by_yangbong_strategy(markets: list[str]) -> dict | None:
         count += 1
         recent = df.iloc[-4:-1]
         if not all(row["close"] > row["open"] for _, row in recent.iterrows()):
+            count_bong += 1
             continue
 
         max_change = max((row["close"] - row["open"]) / row["open"] * 100 for _, row in recent.iterrows())
@@ -156,7 +159,9 @@ async def get_candidate_by_yangbong_strategy(markets: list[str]) -> dict | None:
         if abs(ma5_prev - ma10_prev) < 1.5 and ma5_now > ma10_now and ma5_prev < ma10_prev:
             current_price = df.iloc[-1]["close"]
             return {"market": market, "price": current_price}
-    await send_log(f"{count}개수 검사 중 ...")
+        else:
+            count_ma += 1
+    await send_log(f"{count}개 검사 중 ... {count_bong}개 양봉개수 부족 {count_ma}개 ma 조건 부족...")
     return None
 
 async def monitor_position(market: str, entry_price: float, req: StrategyRequest, entry_time: datetime, upbit):
