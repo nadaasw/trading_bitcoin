@@ -56,6 +56,7 @@ def get_top_1min_movement(markets: list[str], min_movement: float = 1.0) -> dict
 
     for market in markets:
         df = pyupbit.get_ohlcv(market, interval="minute1", count=2)
+        time.sleep(1)
         if df is None or len(df) < 2:
             continue
 
