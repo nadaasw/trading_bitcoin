@@ -66,6 +66,7 @@ def get_top_1min_movement(markets: list[str], min_movement: float = 1.0) -> dict
         rate = (curr - prev) / prev * 100
 
         print(f"⏱️ {market} 변동률: {rate:.2f}%")
+
         if abs(rate) >= min_movement:
             result.append({
                 "market": market,
@@ -90,6 +91,23 @@ def get_balance(market: str, upbit):
             return float(b['balance'])
     return 0
 
+def get_top_20_coins():
+    tickers = pyupbit.get_tickers(fiat="KRW")
+    volumes = []
+
+    for ticker in tickers:
+        try:
+            df = pyupbit.get_ohlcv(ticker, interval="day", count=1)
+            volume = df.iloc[-1]["volume"]
+            close = df.iloc[-1]["close"]
+            trade_amount = volume * close
+            volumes.append((ticker, trade_amount))
+        except:
+            continue
+
+    sorted_list = sorted(volumes, key=lambda x: x[1], reverse=True)
+    top_20 = [item[0] for item in sorted_list[:20]]
+    return top_20
 
 async def monitor_position(upbit, market, entry_price, take_profit, loss_cut, timeout_min):
     start = datetime.now()
@@ -126,18 +144,17 @@ async def main():
     invest_ratio = 100
     take_profit = 1.5
     loss_cut = -0.9
-    candidates = pyupbit.get_tickers(fiat="KRW")
+    candidates = get_top_20_coins()
 
     end_time = datetime.now() + timedelta(minutes=duration_minutes)
 
     while datetime.now() < end_time:
         #candidate = get_candidate_by_yangbong_strategy(candidates)
         print("후보 스캔 시작")
-        candidate = get_top_1min_movement(candidates, min_movement=1.5)
+        candidate = get_top_1min_movement(candidates, min_movement=0.8)
         print("후보 결과:", candidate)
         if not candidate:
             print("not candidate")
-            await asyncio.sleep(60)
             continue
 
         krw = get_balance("KRW", upbit)
@@ -155,7 +172,7 @@ async def main():
             send_telegram(f"🟢 매수 시도: {market} / 금액: {budget:.0f}")
         except Exception as e:
             send_telegram(f"❌ 매수 실패: {e}")
-            await asyncio.sleep(60)
+    
             continue
 
         await monitor_position(upbit, market, price, take_profit, loss_cut, timeout_minutes)
