@@ -51,7 +51,7 @@ def get_candidate_by_yangbong_strategy(markets):
             return {"market": market, "price": price}
     return None
 
-def get_top_1min_movement(markets: list[str]) -> dict | None:
+def get_top_1min_movement(markets: list[str], min_movement: float = 1.0) -> dict | None:
     result = []
 
     for market in markets:
@@ -62,12 +62,12 @@ def get_top_1min_movement(markets: list[str]) -> dict | None:
         prev = df.iloc[-2]["close"]
         curr = df.iloc[-1]["close"]
         rate = (curr - prev) / prev * 100
-
-        result.append({
-            "market": market,
-            "rate": rate,
-            "price": curr
-        })
+        if abs(rate) >= min_movement:
+            result.append({
+                "market": market,
+                "rate": rate,
+                "price": curr
+            })
 
     result.sort(key=lambda x: abs(x["rate"]), reverse=True)
     return result[0] if result else None
@@ -128,7 +128,7 @@ async def main():
 
     while datetime.now() < end_time:
         #candidate = get_candidate_by_yangbong_strategy(candidates)
-        candidate = get_top_1min_movement(candidates)
+        candidate = get_top_1min_movement(candidates, min_movement=1.5)
         if not candidate:
             send_telegram("조건 만족 종목 없음. 60초 대기")
             await asyncio.sleep(60)
