@@ -30,7 +30,7 @@ def get_candidate_by_yangbong_strategy(markets):
         if df is None or len(df) < 10:
             continue
 
-        recent = df.iloc[-4:-1]
+        recent = df.iloc[-2:]
         if not all(row["close"] > row["open"] for _, row in recent.iterrows()):
             continue
 
