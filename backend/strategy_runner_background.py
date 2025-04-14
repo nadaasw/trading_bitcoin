@@ -72,9 +72,16 @@ def get_top_1min_movement(markets: list[str]) -> dict | None:
     result.sort(key=lambda x: abs(x["rate"]), reverse=True)
     return result[0] if result else None
 
-def get_balance(market, upbit):
-    symbol = market.split("-")[1]
-    for b in upbit.get_balances():
+def get_balance(market: str, upbit):
+    if market == "KRW":
+        for b in upbit.get_balances():
+            if b['currency'] == "KRW":
+                return float(b['balance'])
+        return 0
+
+    symbol = market.split("-")[1] if "-" in market else market
+    balances = upbit.get_balances()
+    for b in balances:
         if b['currency'] == symbol:
             return float(b['balance'])
     return 0
