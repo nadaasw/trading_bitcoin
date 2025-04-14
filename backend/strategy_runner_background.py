@@ -58,6 +58,7 @@ def get_top_1min_movement(markets: list[str], min_movement: float = 1.0) -> dict
         df = pyupbit.get_ohlcv(market, interval="minute1", count=2)
         time.sleep(1)
         if df is None or len(df) < 2:
+            print("None")
             continue
 
         prev = df.iloc[-2]["close"]
@@ -129,8 +130,11 @@ async def main():
 
     while datetime.now() < end_time:
         #candidate = get_candidate_by_yangbong_strategy(candidates)
+        print("후보 스캔 시작")
         candidate = get_top_1min_movement(candidates, min_movement=1.5)
+        print("후보 결과:", candidate)
         if not candidate:
+            print("not candidate")
             await asyncio.sleep(60)
             continue
 
