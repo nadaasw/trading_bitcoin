@@ -64,6 +64,8 @@ def get_top_1min_movement(markets: list[str], min_movement: float = 1.0) -> dict
         prev = df.iloc[-2]["close"]
         curr = df.iloc[-1]["close"]
         rate = (curr - prev) / prev * 100
+
+        print(f"⏱️ {market} 변동률: {rate:.2f}%")
         if abs(rate) >= min_movement:
             result.append({
                 "market": market,
