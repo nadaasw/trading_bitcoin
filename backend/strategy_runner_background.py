@@ -130,7 +130,6 @@ async def main():
         #candidate = get_candidate_by_yangbong_strategy(candidates)
         candidate = get_top_1min_movement(candidates, min_movement=1.5)
         if not candidate:
-            send_telegram("조건 만족 종목 없음. 60초 대기")
             await asyncio.sleep(60)
             continue
 
