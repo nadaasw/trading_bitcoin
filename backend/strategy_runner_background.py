@@ -51,6 +51,26 @@ def get_candidate_by_yangbong_strategy(markets):
             return {"market": market, "price": price}
     return None
 
+def get_top_1min_movement(markets: list[str]) -> dict | None:
+    result = []
+
+    for market in markets:
+        df = pyupbit.get_ohlcv(market, interval="minute1", count=2)
+        if df is None or len(df) < 2:
+            continue
+
+        prev = df.iloc[-2]["close"]
+        curr = df.iloc[-1]["close"]
+        rate = (curr - prev) / prev * 100
+
+        result.append({
+            "market": market,
+            "rate": rate,
+            "price": curr
+        })
+
+    result.sort(key=lambda x: abs(x["rate"]), reverse=True)
+    return result[0] if result else None
 
 def get_balance(market, upbit):
     symbol = market.split("-")[1]
@@ -90,17 +110,18 @@ async def main():
 
     send_telegram("🔔 자동매매 봇 시작됨")
 
-    duration_minutes = 720
-    timeout_minutes = 6
+    duration_minutes = 20
+    timeout_minutes = 3
     invest_ratio = 100
-    take_profit = 4.5
-    loss_cut = -3.0
+    take_profit = 1.5
+    loss_cut = -0.9
     candidates = pyupbit.get_tickers(fiat="KRW")
 
     end_time = datetime.now() + timedelta(minutes=duration_minutes)
 
     while datetime.now() < end_time:
-        candidate = get_candidate_by_yangbong_strategy(candidates)
+        #candidate = get_candidate_by_yangbong_strategy(candidates)
+        candidate = get_top_1min_movement(candidates)
         if not candidate:
             send_telegram("조건 만족 종목 없음. 60초 대기")
             await asyncio.sleep(60)
