@@ -117,7 +117,7 @@ async def main():
 
     send_telegram("🔔 자동매매 봇 시작됨")
 
-    duration_minutes = 20
+    duration_minutes = 600
     timeout_minutes = 3
     invest_ratio = 100
     take_profit = 1.5
